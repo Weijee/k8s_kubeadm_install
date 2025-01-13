@@ -3,32 +3,32 @@
   gather_facts: no
   vars_files: ../files/vars.yaml
   tasks: 
-    - name: 1: Create installation cache directory
+    - name: 1:Create installation cache directory
       file:
         path: /root/k8s_install
         state: directory
 
-    - name: 2: Check if init_system.lock file exists
+    - name: 2:Check if init_system.lock file exists
       stat:
         path: /root/k8s_install/init_system.lock
       register: init_file_exists
 
-    - name: 3: Start initialization process
+    - name: 3:Start initialization process
       block:
-        - name: 3.1: Install chrony for time synchronization
+        - name: 3.1:Install chrony for time synchronization
           apt:
             name: chrony
             state: present
           when: inventory_hostname in groups['manage_node']
 
-        - name: 3.2: Configure chrony for time synchronization
+        - name: 3.2:Configure chrony for time synchronization
           lineinfile:
             path: /etc/chrony/chrony.conf
             line: allow
             create: yes
           when: inventory_hostname in groups['manage_node']
 
-        - name: 3.3: Set node time synchronization
+        - name: 3.3:Set node time synchronization
           lineinfile:
             path: /etc/systemd/timesyncd.conf
             regexp: ^#NTP=
@@ -36,25 +36,25 @@
             backup: yes  
           when: inventory_hostname in groups['except_manage_node']
 
-        - name: 3.4: Set 24-hour time format
+        - name: 3.4:Set 24-hour time format
           copy:
             content: |
               LANG=en_US.UTF-8
               LC_TIME=en_DK.UTF-8
             dest: /etc/default/locale
-        - name: 3.5: Set timezone
+        - name: 3.5:Set timezone
           timezone:
             name: Asia/Shanghai
-        - name: 3.6: Install Chinese language pack
+        - name: 3.6:Install Chinese language pack
           apt:
             name: language-pack-zh-hans
             state: present 
 
-        - name: 3.7: Install docker.io
+        - name: 3.7:Install docker.io
           apt:
             name: docker.io
             state: present
-        - name: 3.8: Configure /etc/docker/daemon.json
+        - name: 3.8:Configure /etc/docker/daemon.json
           copy:
             content: |
               { 
@@ -77,18 +77,18 @@
               }
             dest: /etc/docker/daemon.json
 
-        - name: 3.9: Restart docker
+        - name: 3.9:Restart docker
           service:
             name: docker
             state: restarted
  
-        - name: 3.10: Install ipset and ipvsadm
+        - name: 3.10:Install ipset and ipvsadm
           apt:
             pkg:
             - ipset
             - ipvsadm
           
-        - name: 3.11: Optimize system for Kubernetes
+        - name: 3.11:Optimize system for Kubernetes
           copy:
             content: |
               # Allow IPv6 forwarding through iptables
@@ -116,7 +116,7 @@
               vm.swappiness = 0
             dest: /etc/sysctl.d/k8s.conf
     
-        - name: 3.12: Load iptables and ipvs kernel modules
+        - name: 3.12:Load iptables and ipvs kernel modules
           copy:
             content: |
               # /etc/modules-load.d/kubernetes.conf
@@ -134,12 +134,12 @@
             dest: /etc/modules-load.d/kubernetes.conf
             mode: '0755'
 
-        - name: 3.13: Find swap lines in /etc/fstab
+        - name: 3.13:Find swap lines in /etc/fstab
           shell: grep -E 'swap' /etc/fstab || true
           register: swap_lines
           failed_when: false
 
-        - name: 3.14: Comment out swap lines
+        - name: 3.14:Comment out swap lines
           lineinfile:
             path: /etc/fstab
             regexp: '{{ item }}'
@@ -148,17 +148,17 @@
           with_items: "{{ swap_lines.stdout_lines }}"
           when: swap_lines.stdout_lines | length > 0
       always:
-        - name: 3.15: Disable swap partition
+        - name: 3.15:Disable swap partition
           command: swapoff -a
       when: not init_file_exists.stat.exists
 
-    - name: 4: Reboot and mark completion
+    - name: 4:Reboot and mark completion
       block:
-      - name: 4.1: Create initialization lock file
+      - name: 4.1:Create initialization lock file
         file: 
           path: /root/k8s_install/init_system.lock
           state: touch
-      - name: 4.2: Reboot all nodes
+      - name: 4.2:Reboot all nodes
         reboot:
           reboot_timeout: 5
       when: not init_file_exists.stat.exists  
@@ -169,36 +169,36 @@
   gather_facts: no
   vars_files: ../files/vars.yaml
   tasks:
-    - name: 1: Check if install_kubeadmin.lock file exists
+    - name: 1:Check if install_kubeadmin.lock file exists
       stat:
         path: /root/k8s_install/install_kubeadmin.lock
       register: install_file_exists
 
-    - name: 2: Configure containerd
+    - name: 2:Configure containerd
       block:
-        - name: 2.1: Create containerd directory
+        - name: 2.1:Create containerd directory
           file:
             path: /etc/containerd
             state: directory
             mode: "0755"
 
-        - name: 2.2: Generate containerd configuration
+        - name: 2.2:Generate containerd configuration
           shell: containerd config default > /etc/containerd/config.toml
 
-        - name: 2.3: Modify sandbox image version in configuration file to use Aliyun source
+        - name: 2.3:Modify sandbox image version in configuration file to use Aliyun source
           lineinfile:
             path: /etc/containerd/config.toml
             regexp: sandbox_image
             line: '    sandbox_image = "registry.aliyuncs.com/google_containers/{{sandbox_image}}"'
             backup: yes
-        - name: 2.4: Set containerd to use Systemd Cgroups driver
+        - name: 2.4:Set containerd to use Systemd Cgroups driver
           lineinfile:
             path: /etc/containerd/config.toml
             regexp: SystemdCgroup
             line: '            SystemdCgroup = true'
             backup: yes
         
-        - name: 2.5: Fix crictl ps error
+        - name: 2.5:Fix crictl ps error
           copy:
             content: |
               runtime-endpoint: unix:///run/containerd/containerd.sock
@@ -207,29 +207,29 @@
               debug: false
               pull-image-on-create: false
             dest: /etc/crictl.yaml       
-        - name: 2.6: Restart containerd
+        - name: 2.6:Restart containerd
           service:
             name: containerd
             state: restarted
       when: not install_file_exists.stat.exists
 
-    - name: 3: Install Kubernetes
+    - name: 3:Install Kubernetes
       block:
-        - name: 3.1: Add Kubernetes official GPG key
+        - name: 3.1:Add Kubernetes official GPG key
           copy: 
             src: ../files/k8s_pkgs/kubernetes-apt-keyring.gpg
             dest: /etc/apt/kubernetes-apt-keyring.gpg
 
-        - name: 3.2: Add Kubernetes official repository to apt sources list
+        - name: 3.2:Add Kubernetes official repository to apt sources list
           copy: 
             src: ../files/k8s_pkgs/source.list
             dest: /etc/apt/sources.list.d/kubernetes.list
 
-        - name: 3.3: Update apt cache
+        - name: 3.3:Update apt cache
           apt:
             update_cache: yes
 
-        - name: 3.4: Install required packages for Kubernetes apt repository
+        - name: 3.4:Install required packages for Kubernetes apt repository
           apt:
             pkg:
             - gnupg
@@ -237,28 +237,28 @@
             - curl
             - software-properties-common
 
-        - name: 3.5: Install kubelet, kubeadm, and kubectl {{kube_3tools_version}} version
+        - name: 3.5:Install kubelet, kubeadm, and kubectl {{kube_3tools_version}} version
           apt:
             pkg:
             - kubelet={{kube_3tools_version}}
             - kubeadm={{kube_3tools_version}}
             - kubectl={{kube_3tools_version}}
 
-        - name: 3.6: Lock package versions to prevent automatic updates
+        - name: 3.6:Lock package versions to prevent automatic updates
           shell: apt-mark hold kubelet kubeadm kubectl       
 
-        - name: 3.7: Set kubelet to use systemd as cgroup driver
+        - name: 3.7:Set kubelet to use systemd as cgroup driver
           copy:
             content: |
               KUBELET_EXTRA_ARGS="--cgroup-driver=systemd"
             dest: /etc/default/kubelet
         
-        - name: 3.8: Restart kubelet service
+        - name: 3.8:Restart kubelet service
           service:
             name: kubelet
             state: restarted
 
-        - name: 3.9: Add kubectl tab completion
+        - name: 3.9:Add kubectl tab completion
           lineinfile:
             path: /root/.bashrc
             line: source <(kubectl completion bash)
@@ -266,7 +266,7 @@
           delegate_to: "{{ item }}"
           loop: "{{ groups['manage_node'] }}"
 
-        - name: 3.10: Add kubectl tab completion error handling
+        - name: 3.10:Add kubectl tab completion error handling
           lineinfile:
             path: /root/.bashrc
             line: source /usr/share/bash-completion/bash_completion
@@ -274,25 +274,25 @@
           delegate_to: "{{ item }}"
           loop: "{{ groups['manage_node'] }}"
         
-        - name: 3.11: Confirm installed version is v1.28.4, v1.29.6, or v1.30.2
+        - name: 3.11:Confirm installed version is v1.28.4, v1.29.6, or v1.30.2
           pause:
             seconds: 15 
-        - name: 3.11.1: Copy script to import {{kubernetes_version}} images
+        - name: 3.11.1:Copy script to import {{kubernetes_version}} images
           copy:
             content: |
               for i in $(cd /root/k8s_install/{{kubernetes_version}} && ls); do ctr -n=k8s.io images import /root/k8s_install/{{kubernetes_version}}/$i; done
             dest: /root/k8s_install/ctr_import.sh
             mode: '0755'
-        - name: 3.11.2: Copy image tar files for {{kubernetes_version}}
+        - name: 3.11.2:Copy image tar files for {{kubernetes_version}}
           copy:
             src: ../files/docker-images/{{kubernetes_version}}
             dest: /root/k8s_install/
           failed_when: false
-        - name: 3.11.3: Execute import script
+        - name: 3.11.3:Execute import script
           shell: bash /root/k8s_install/ctr_import.sh
           failed_when: false
 
-        - name: 3.12: Create installation lock file
+        - name: 3.12:Create installation lock file
           file: 
             path: /root/k8s_install/install_kubeadmin.lock
             state: touch        
@@ -304,14 +304,14 @@
   vars_files: ../files/vars.yaml
   tags: after_install
   tasks:
-    - name: 1: Check if after_install.lock file exists
+    - name: 1:Check if after_install.lock file exists
       stat:
         path: /root/k8s_install/after_install.lock
       register: after_install_file_exists
       
-    - name: 1: Execute kubeadm init
+    - name: 1:Execute kubeadm init
       block:
-        - name: 1.1: Write initialization command to a script
+        - name: 1.1:Write initialization command to a script
           copy:
             content: |
               kubeadm init --control-plane-endpoint={{control_plane_endpoint}} --image-repository=registry.aliyuncs.com/google_containers --kubernetes-version={{kubernetes_version}} --pod-network-cidr={{pod_network_cidr}} --apiserver-advertise-address={{apiserver_advertise_address}} --cri-socket unix://var/run/containerd/containerd.sock
@@ -319,32 +319,32 @@
             dest: /root/k8s_install/kubeadm_init.sh
             mode: '0755'
 
-        - name: 1.2: Execute the script
+        - name: 1.2:Execute the script
           shell: /root/k8s_install/kubeadm_init.sh
           args:
             creates: /root/k8s_install/init.lock
 
-        - name: 1.3: Create .kube directory and copy config
+        - name: 1.3:Create .kube directory and copy config
           shell: mkdir -p $HOME/.kube && cp -f /etc/kubernetes/admin.conf $HOME/.kube/config && chown $(id -u):$(id -g) $HOME/.kube/config && touch /root/k8s_install/kube.lock
           args:
             creates: /root/k8s_install/kube.lock
-        - name: 1.4: Handle abnormal exit
+        - name: 1.4:Handle abnormal exit
           debug:
             msg: |
               You need to execute kubeadm reset on the manage_node and delete rm /root/k8s_install/{init.lock,kube.lock}
       when: not after_install_file_exists.stat.exists
 
-    - name: 2: Add nodes to the cluster
+    - name: 2:Add nodes to the cluster
       block:
-        - name: 2.1: Regenerate join command
+        - name: 2.1:Regenerate join command
           shell: kubeadm token create --print-join-command 
           register: join_command
 
-        - name: 2.2: Generate certificate key
+        - name: 2.2:Generate certificate key
           shell: kubeadm init phase upload-certs --upload-certs 2>&1 | tail -n 1
           register: certificate_key
 
-        - name: 2.3: Write nodes join command to a script
+        - name: 2.3:Write nodes join command to a script
           copy:
             content: |
               {{ item }}
@@ -352,7 +352,7 @@
             mode: '0755'
           with_items: "{{ join_command.stdout_lines }}" 
 
-        - name: 2.4: Write other_masters join command to a script
+        - name: 2.4:Write other_masters join command to a script
           copy:
             content: |
               {{ item }} --control-plane --certificate-key {{ certificate_key.stdout }}
@@ -361,7 +361,7 @@
           with_items: "{{ join_command.stdout_lines }}"
           when: groups['other_masters']|length > 0
  
-        - name: 2.5: Copy nodes join script to nodes
+        - name: 2.5:Copy nodes join script to nodes
           copy:
             src: /root/k8s_install/nodes_join_command.sh
             dest: /root/k8s_install/nodes_join_command.sh
@@ -369,7 +369,7 @@
           delegate_to: "{{ item }}"
           loop: "{{ groups['nodes'] }}"
 
-        - name: 2.6: Copy other_masters join script to other_masters, if any
+        - name: 2.6:Copy other_masters join script to other_masters, if any
           copy:
             src: /root/k8s_install/control_plane_join_command.sh
             dest: /root/k8s_install/control_plane_join_command.sh
@@ -378,14 +378,14 @@
           loop: "{{ groups['other_masters'] }}"
           when: groups['other_masters']|length > 0
         
-        - name: 2.7: Execute join command on nodes
+        - name: 2.7:Execute join command on nodes
           shell: /root/k8s_install/nodes_join_command.sh && touch /root/k8s_install/join.lock
           args:
             creates: /root/k8s_install/join.lock
           delegate_to: "{{ item }}"
           loop: "{{ groups['nodes'] }}"
 
-        - name: 2.8: Execute join command on other_masters
+        - name: 2.8:Execute join command on other_masters
           shell: /root/k8s_install/control_plane_join_command.sh && touch /root/k8s_install/join.lock
           args:
             creates: /root/k8s_install/join.lock
@@ -393,69 +393,69 @@
           loop: "{{ groups['other_masters'] }}"
           when: groups['other_masters']|length > 0
 
-        - name: 2.9: Add role to nodes
+        - name: 2.9:Add role to nodes
           shell: kubectl label nodes "{{ item }}" node-role.kubernetes.io/node=node
           args:
             creates: /root/k8s_install/label.lock
           loop: "{{ groups['nodes'] }}"
 
-        - name: 2.10: Create label.lock file
+        - name: 2.10:Create label.lock file
           file: 
             path: /root/k8s_install/label.lock
             state: touch
 
-        - name: 2.11: Handle abnormal exit
+        - name: 2.11:Handle abnormal exit
           debug:
             msg: |
               You need to execute kubeadm reset on all nodes and other_masters and delete rm /root/k8s_install/{join.lock,label.lock}
 
       when: not after_install_file_exists.stat.exists
  
-    - name: 3: Install Calico
+    - name: 3:Install Calico
       block:
-        - name: 3.1: Calico official website
+        - name: 3.1:Calico official website
           debug:
             msg: |
               https://docs.tigera.io/calico/latest/about
 
-        - name: 3.2: Quick start reference
+        - name: 3.2:Quick start reference
           debug:
             msg: |
               https://docs.tigera.io/calico/latest/getting-started/kubernetes/quickstart
 
-        - name: 3.3: Quick start YAML
+        - name: 3.3:Quick start YAML
           shell: kubectl create -f ../files/calico/tigera-operator_{{calico_version}}.yaml
 
-        - name: 3.4: Modify Calico pod network range
+        - name: 3.4:Modify Calico pod network range
           lineinfile:
             path: ../files/calico/custom-resources_{{calico_version}}.yaml
             regexp: cidr
             line: '      cidr: {{pod_network}}'
             backup: yes
 
-        - name: 3.5: Create custom resources
+        - name: 3.5:Create custom resources
           shell: kubectl create -f ../files/calico/custom-resources_{{calico_version}}.yaml
       when: not after_install_file_exists.stat.exists
 
 
 
-    - name: 4: Install ingress and modify apiserver certificate expiration to 10 years
+    - name: 4:Install ingress and modify apiserver certificate expiration to 10 years
       block:
-        - name: 4.1: Ingress GitHub address for version compatibility
+        - name: 4.1:Ingress GitHub address for version compatibility
           debug:
             msg: |
               https://github.com/kubernetes/ingress-nginx/blob/main/README.md#readme
 
-        - name: 4.2: Quick start reference
+        - name: 4.2:Quick start reference
           debug:
             msg: |
               https://kubernetes.github.io/ingress-nginx/deploy/#quick-start
 
-        - name: 4.3: Install ingress using the following command
+        - name: 4.3:Install ingress using the following command
           shell: kubectl create -f ../files/ingress/deploy_{{ingress_version}}.yaml
         
 
-        - name: 4.4: Modify apiserver certificate expiration to 10 years, copy update script
+        - name: 4.4:Modify apiserver certificate expiration to 10 years, copy update script
           copy:
             src: ../files/kube-cert/update-kubeadm-cert.sh
             dest: /root/k8s_install/update-kubeadm-cert.sh
@@ -463,21 +463,21 @@
           delegate_to: "{{ item }}"
           loop: "{{ groups['masters'] }}"
 
-        - name: 4.4.1: Modify apiserver certificate expiration to 10 years, execute update script
+        - name: 4.4.1:Modify apiserver certificate expiration to 10 years, execute update script
           shell: bash /root/k8s_install/update-kubeadm-cert.sh all --cri containerd && touch /root/k8s_install/update_kubeadm_cert.lock
           args:
             creates: /root/k8s_install/update_kubeadm_cert.lock
           delegate_to: "{{ item }}"
           loop: "{{ groups['masters'] }}"
 
-        - name: 4.5: Create installation lock file
+        - name: 4.5:Create installation lock file
           file: 
             path: /root/k8s_install/after_install.lock
             state: touch
 
       when: not after_install_file_exists.stat.exists
 
-    - name: 5: If successful
+    - name: 5:If successful
       debug:
         msg: |
           You should not see any errors. You can execute test-ingress.yaml in the ../files directory to verify the network: kubectl apply -f files/test-ingress.yaml, kubectl get pod,svc,ing
