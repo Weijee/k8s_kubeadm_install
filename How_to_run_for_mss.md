@@ -175,125 +175,77 @@ root@ansible-controller:~# mkdir -p /etc/ansible/
 ```
 
 ### 复制整个k8s_kubeadm_install到Ansible-Controller的root用户根目录
-https://github.com/AYYQ127/k8s_kubeadm_install
-```bash
-root@master1:~/k8s_kubeadm_install# tree
-.
-├── How_to_run.md
-├── How_to_run_redhat_release.md
-├── LICENSE
-├── README.md
-├── files
-│   ├── ansible
-│   │   ├── ansible.cfg
-│   │   └── hosts
-│   ├── calico
-│   │   ├── custom-resources_v3.26.4.yaml
-│   │   ├── custom-resources_v3.27.0.yaml
-│   │   ├── tigera-operator_v3.26.4.yaml
-│   │   └── tigera-operator_v3.27.0.yaml
-│   ├── cert-manager
-│   │   ├── cert-manager_v1.13.3.yaml
-│   │   └── cert-manager_v1.14.0-beta.0.yaml
-│   ├── dashboard
-│   │   ├── README.md
-│   │   ├── kubernetes-dashboard_v2.7.0.yaml
-│   │   └── kubernetes-dashboard_v3.0.0-alpha0.yaml
-│   ├── ingress
-│   │   ├── deploy_v1.9.4.yaml
-│   │   └── deploy_v1.9.5.yaml
-│   ├── k8s_pkgs
-│   │   ├── docker-ce.repo
-│   │   ├── kubernetes-apt-keyring.gpg
-│   │   ├── kubernetes-lock.repo
-│   │   ├── kubernetes-nolock.repo
-│   │   ├── repomd.xml.key
-│   │   └── source.list
-│   ├── metrics
-│   │   ├── components_v0.6.4.yaml
-│   │   └── components_v0.7.0.yaml
-│   ├── rancher
-│   ├── test-ingress.yaml
-│   └── vars.yaml
-└── playbooks
-    ├── cert_manager_install.yaml
-    ├── dashboard_install.yaml
-    ├── harbor_install.yaml
-    ├── main.yaml
-    ├── main_redhat_release.yaml
-    ├── metrics_server_install.yaml
-    └── prometheus_install.yaml
-```
 
-### 在主节点1准备ansible环境
+### 根据Ansible-Controller中的/etc/hosts的实际情况（前面已修改过）修改ansible环境
 ```bash 
-root@master1:~/k8s_kubeadm_install# vim files/ansible/hosts
-root@master1:~/k8s_kubeadm_install# cat files/ansible/hosts
-# 修改hosts节点名,分组不能修改,只加/etc/hosts中对应主机名
+root@ansible-controller:~/k8s_kubeadm_install# vim files/ansible/hosts
+root@ansible-controller:~/k8s_kubeadm_install# cat files/ansible/hosts
+# modify hosts name, the group name can not be modified, add new hosts below.(defined in /etc/hosts)
 
 ###                                                           
 #
-# 如果不想使用22端口ssh连接,可以添加变量ansible_ssh_port=port_num
-# 例如：
+# ssh port can be changed here: ansible_ssh_port=port_num
+# example：
 # [manage_node]
-# master1 ansible_ssh_port=2222
+# k8s-master ansible_ssh_port=2222
 #
 #
 ###
 
-# 执行安装的节点,第一台master
+# execute k8s installation on this master node
 [manage_node]
-master1 
+k8s-master 
 
-# 其他主节点在此添加,不要再加manage_node
+# add other master nodes below
 [other_masters]
-master2 
+# k8s-master2 
 
-# 工作节点在此添加
+# add more worker nodes below
 [nodes]
-node1 
-node2 
+k8s-worker1
+k8s-worker2
+k8s-worker3
 
+# ****************DO NOT MODIFY*****************
 
-# ****************以下内容不要修改*****************
-
-# 除了操作节点的所有节点
+# all nodes except manage_node
 [except_manage_node:children]
 other_masters
 nodes
 
-# 所有主节点(请勿修改)
+# all master nodes
 [masters:children]
 manage_node
 other_masters
 
-# 所有节点分组(请勿修改)
+# all nodes
 [k8s:children]
 manage_node
 other_masters
 nodes 
 
 ```
+将修改过后的hosts文件拷贝到/etc/ansible文件夹下（ansible.cfg按需更改）
 ```bash
 # 修改hosts节点名,分组不能修改(请注意: 主机名，ansible节点，/etc/hosts要保持一致)
-root@master1:~/k8s_kubeadm_install# cp -r files/ansible /etc/
+root@ansible-controller:~/k8s_kubeadm_install# cp -r files/ansible /etc/
 ```
 
 
-### 使用ansible统一修改hosts和apt源
+### 在Ansible-Controller使用ansible统一修改k8s节点机器的hosts和apt源
 ```bash
-root@master1:~/k8s_kubeadm_install# ansible k8s -m copy -a "src=/etc/hosts dest=/etc/hosts"
-root@master1:~/k8s_kubeadm_install# ansible k8s -m copy -a "src=/etc/apt/sources.list dest=/etc/apt/sources.list"
-root@master1:~/k8s_kubeadm_install# ansible k8s -m apt -a "update_cache=yes"
+root@ansible-controller:~/k8s_kubeadm_install# ansible k8s -m copy -a "src=/etc/hosts dest=/etc/hosts"
+root@ansible-controller:~/k8s_kubeadm_install# ansible k8s -m copy -a "src=/etc/apt/sources.list dest=/etc/apt/sources.list"
+root@ansible-controller:~/k8s_kubeadm_install# ansible k8s -m apt -a "update_cache=yes"
 ```
 
-### 修改files/vars.yaml(主节点1)  
+### 在Ansible-Controller修改files/vars.yaml
 <strong>指定版本，master节点ip等信息</strong>
-
+修改下面的NTP和apiserver_advertise_address信息（manage_node对应的IP即可）
 ```bash
-root@master1:~/k8s_kubeadm_install# cat files/vars.yaml
+root@ansible-controller:~/k8s_kubeadm_install# cat files/vars.yaml
 # 时间服务器
-NTP: 192.168.181.132
+NTP: 192.168.145.131
 
 # 控制面板主机名，不需要修改，固定为[manage_node]
 control_plane_endpoint: master1
@@ -307,7 +259,7 @@ kube_3tools_version: 1.28.4-1.1
 # 定义pod的cidr网络，kubeadm init使用
 pod_network_cidr: 10.244.0.0/16
 # kubeadm init使用
-apiserver_advertise_address: 192.168.181.132
+apiserver_advertise_address: 192.168.145.131
 
 # 修改calico使用custom-resources.yaml使用
 pod_network: 10.244.0.0
