@@ -42,9 +42,11 @@
               LANG=en_US.UTF-8
               LC_TIME=en_DK.UTF-8
             dest: /etc/default/locale
+
         - name: 3.5:Set timezone
           timezone:
             name: Asia/Shanghai
+
         - name: 3.6:Install Chinese language pack
           apt:
             name: language-pack-zh-hans
@@ -54,6 +56,7 @@
           apt:
             name: docker.io
             state: present
+
         - name: 3.8:Configure /etc/docker/daemon.json
           copy:
             content: |
@@ -61,8 +64,8 @@
                 "data-root": "/data2/docker", 
                 "exec-opts": ["native.cgroupdriver=systemd"], 
                 "registry-mirrors": [
-                  "https://docker.mirrors.ustc.edu.cn",
-                  "http://hub-mirror.c.163.com"
+                  "https://docker.1panel.live",
+                  "https://docker-0.unsee.tech"
                 ],
                 "insecure-registries": ["{{ harbor_domain }}"],
                 "max-concurrent-downloads": 10,
@@ -160,7 +163,7 @@
           state: touch
       - name: 4.2:Reboot all nodes
         reboot:
-          reboot_timeout: 5
+          reboot_timeout: 15
       when: not init_file_exists.stat.exists  
   
 
@@ -191,6 +194,7 @@
             regexp: sandbox_image
             line: '    sandbox_image = "registry.aliyuncs.com/google_containers/{{sandbox_image}}"'
             backup: yes
+
         - name: 2.4:Set containerd to use Systemd Cgroups driver
           lineinfile:
             path: /etc/containerd/config.toml
@@ -206,7 +210,8 @@
               timeout: 10
               debug: false
               pull-image-on-create: false
-            dest: /etc/crictl.yaml       
+            dest: /etc/crictl.yaml    
+
         - name: 2.6:Restart containerd
           service:
             name: containerd
@@ -277,17 +282,20 @@
         - name: 3.11:Confirm installed version is v1.28.4, v1.29.6, or v1.30.2
           pause:
             seconds: 15 
+
         - name: 3.11.1:Copy script to import {{kubernetes_version}} images
           copy:
             content: |
               for i in $(cd /root/k8s_install/{{kubernetes_version}} && ls); do ctr -n=k8s.io images import /root/k8s_install/{{kubernetes_version}}/$i; done
             dest: /root/k8s_install/ctr_import.sh
             mode: '0755'
+
         - name: 3.11.2:Copy image tar files for {{kubernetes_version}}
           copy:
             src: ../files/docker-images/{{kubernetes_version}}
             dest: /root/k8s_install/
           failed_when: false
+
         - name: 3.11.3:Execute import script
           shell: bash /root/k8s_install/ctr_import.sh
           failed_when: false
@@ -308,6 +316,7 @@
       stat:
         path: /root/k8s_install/after_install.lock
       register: after_install_file_exists
+      delegate_to: "{{ groups['manage_node'][0] }}"
       
     - name: 1:Execute kubeadm init
       block:
@@ -318,16 +327,20 @@
               touch /root/k8s_install/init.lock
             dest: /root/k8s_install/kubeadm_init.sh
             mode: '0755'
+          delegate_to: "{{ groups['manage_node'][0] }}"
 
         - name: 1.2:Execute the script
           shell: /root/k8s_install/kubeadm_init.sh
           args:
             creates: /root/k8s_install/init.lock
+          delegate_to: "{{ groups['manage_node'][0] }}"
 
         - name: 1.3:Create .kube directory and copy config
           shell: mkdir -p $HOME/.kube && cp -f /etc/kubernetes/admin.conf $HOME/.kube/config && chown $(id -u):$(id -g) $HOME/.kube/config && touch /root/k8s_install/kube.lock
           args:
             creates: /root/k8s_install/kube.lock
+          delegate_to: "{{ groups['manage_node'][0] }}"
+
         - name: 1.4:Handle abnormal exit
           debug:
             msg: |
@@ -339,10 +352,12 @@
         - name: 2.1:Regenerate join command
           shell: kubeadm token create --print-join-command 
           register: join_command
+          delegate_to: "{{ groups['manage_node'][0] }}"
 
         - name: 2.2:Generate certificate key
           shell: kubeadm init phase upload-certs --upload-certs 2>&1 | tail -n 1
           register: certificate_key
+          delegate_to: "{{ groups['manage_node'][0] }}"
 
         - name: 2.3:Write nodes join command to a script
           copy:
@@ -351,6 +366,7 @@
             dest: /root/k8s_install/nodes_join_command.sh
             mode: '0755'
           with_items: "{{ join_command.stdout_lines }}" 
+          delegate_to: "{{ groups['manage_node'][0] }}"
 
         - name: 2.4:Write other_masters join command to a script
           copy:
@@ -361,31 +377,67 @@
           with_items: "{{ join_command.stdout_lines }}"
           when: groups['other_masters']|length > 0
  
-        - name: 2.5:Copy nodes join script to nodes
-          copy:
+        - name: 2.5:Check if nodes join command script file exists
+          stat:
+            path: /root/k8s_install/nodes_join_command.sh
+          register: nodes_join_command_file_stat
+          delegate_to: "{{ groups['manage_node'][0] }}"
+
+        - name: 2.6:Fetch nodes join command script file from manage_node if it exists
+          fetch:
             src: /root/k8s_install/nodes_join_command.sh
+            dest: /tmp/nodes_join_command.sh        
+            flat: yes                         
+          when: nodes_join_command_file_stat.stat.exists       
+          delegate_to: "{{ groups['manage_node'][0] }}"
+
+        - name: 2.7:Check if other_masters join command script exists
+          stat:
+            path: /root/k8s_install/control_plane_join_command.sh
+          register: other_masters_join_command_file_stat
+          delegate_to: "{{ groups['manage_node'][0] }}"
+
+        - name: 2.8:Fetch other_masters join command script file from manage_node if it exists
+          fetch:
+            src: /root/k8s_install/control_plane_join_command.sh
+            dest: /tmp/control_plane_join_command.sh
+            flat: yes
+          when: other_masters_join_command_file_stat.stat.exists
+          delegate_to: "{{ groups['manage_node'][0] }}"
+
+        - name: 2.9:Copy nodes join script to nodes
+          copy:
+            src: /tmp/nodes_join_command.sh
             dest: /root/k8s_install/nodes_join_command.sh
             mode: '0755'
           delegate_to: "{{ item }}"
           loop: "{{ groups['nodes'] }}"
 
-        - name: 2.6:Copy other_masters join script to other_masters, if any
+        - name: 2.10:Copy other_masters join script to other_masters, if any
           copy:
-            src: /root/k8s_install/control_plane_join_command.sh
+            src: /tmp/control_plane_join_command.sh
             dest: /root/k8s_install/control_plane_join_command.sh
             mode: '0755'
           delegate_to: "{{ item }}"
           loop: "{{ groups['other_masters'] }}"
           when: groups['other_masters']|length > 0
         
-        - name: 2.7:Execute join command on nodes
+        - name: 2.11:Clean up temporary files on manage_node
+          file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /tmp/nodes_join_command.sh
+            - /tmp/control_plane_join_command.sh
+
+        - name: 2.12:Execute join command on nodes
           shell: /root/k8s_install/nodes_join_command.sh && touch /root/k8s_install/join.lock
           args:
             creates: /root/k8s_install/join.lock
           delegate_to: "{{ item }}"
           loop: "{{ groups['nodes'] }}"
 
-        - name: 2.8:Execute join command on other_masters
+        - name: 2.13:Execute join command on other_masters
           shell: /root/k8s_install/control_plane_join_command.sh && touch /root/k8s_install/join.lock
           args:
             creates: /root/k8s_install/join.lock
@@ -393,18 +445,20 @@
           loop: "{{ groups['other_masters'] }}"
           when: groups['other_masters']|length > 0
 
-        - name: 2.9:Add role to nodes
+        - name: 2.14:Add role to nodes
           shell: kubectl label nodes "{{ item }}" node-role.kubernetes.io/node=node
           args:
             creates: /root/k8s_install/label.lock
           loop: "{{ groups['nodes'] }}"
+          delegate_to: "{{ groups['manage_node'][0] }}"
 
-        - name: 2.10:Create label.lock file
+        - name: 2.15:Create label.lock file
           file: 
             path: /root/k8s_install/label.lock
             state: touch
+          delegate_to: "{{ groups['manage_node'][0] }}"
 
-        - name: 2.11:Handle abnormal exit
+        - name: 2.16:Handle abnormal exit
           debug:
             msg: |
               You need to execute kubeadm reset on all nodes and other_masters and delete rm /root/k8s_install/{join.lock,label.lock}
@@ -417,27 +471,48 @@
           debug:
             msg: |
               https://docs.tigera.io/calico/latest/about
+          delegate_to: "{{ groups['manage_node'][0] }}"
 
         - name: 3.2:Quick start reference
           debug:
             msg: |
               https://docs.tigera.io/calico/latest/getting-started/kubernetes/quickstart
+          delegate_to: "{{ groups['manage_node'][0] }}"
 
-        - name: 3.3:Quick start YAML
-          shell: kubectl create -f ../files/calico/tigera-operator_{{calico_version}}.yaml
-
-        - name: 3.4:Modify Calico pod network range
+        - name: 3.3:Modify Calico pod network range
           lineinfile:
             path: ../files/calico/custom-resources_{{calico_version}}.yaml
             regexp: cidr
             line: '      cidr: {{pod_network}}'
             backup: yes
 
+        - name: 3.4:Copy calico config file to manage_node
+          copy:
+            src: "{{ item }}"
+            dest: "/tmp/{{ item | basename }}"
+            mode: '0755'
+          loop: 
+            - ../files/calico/custom-resources_{{calico_version}}.yaml
+            - ../files/calico/tigera-operator_{{calico_version}}.yaml
+          delegate_to: "{{ groups['manage_node'][0] }}"
+
+        - name: 3.4:Quick start YAML
+          shell: kubectl create -f /tmp/tigera-operator_{{calico_version}}.yaml
+          delegate_to: "{{ groups['manage_node'][0] }}"
+
         - name: 3.5:Create custom resources
-          shell: kubectl create -f ../files/calico/custom-resources_{{calico_version}}.yaml
+          shell: kubectl create -f /tmp/custom-resources_{{calico_version}}.yaml
+          delegate_to: "{{ groups['manage_node'][0] }}"
+
+        - name: 2.11:Clean up calico config files on manage_node
+          file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /tmp/custom-resources_{{calico_version}}.yaml
+            - /tmp/tigera-operator_{{calico_version}}.yaml
+          delegate_to: "{{ groups['manage_node'][0] }}"
       when: not after_install_file_exists.stat.exists
-
-
 
     - name: 4:Install ingress and modify apiserver certificate expiration to 10 years
       block:
@@ -451,11 +526,28 @@
             msg: |
               https://kubernetes.github.io/ingress-nginx/deploy/#quick-start
 
-        - name: 4.3:Install ingress using the following command
-          shell: kubectl create -f ../files/ingress/deploy_{{ingress_version}}.yaml
-        
+        - name: 4.3:Copy ingress config file to manage_node
+          copy:
+            src: "{{ item }}"
+            dest: "/tmp/{{ item | basename }}"
+            mode: '0755'
+          loop: 
+            - ../files/ingress/deploy_{{ingress_version}}.yaml
+          delegate_to: "{{ groups['manage_node'][0] }}"
 
-        - name: 4.4:Modify apiserver certificate expiration to 10 years, copy update script
+        - name: 4.4:Install ingress using the following command
+          shell: kubectl create -f /tmp/deploy_{{ingress_version}}.yaml
+          delegate_to: "{{ groups['manage_node'][0] }}"
+
+        - name: 4.5:Clean up calico config files on manage_node
+          file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /tmp/deploy_{{ingress_version}}.yaml
+          delegate_to: "{{ groups['manage_node'][0] }}"
+
+        - name: 4.6:Modify apiserver certificate expiration to 10 years, copy update script
           copy:
             src: ../files/kube-cert/update-kubeadm-cert.sh
             dest: /root/k8s_install/update-kubeadm-cert.sh
@@ -463,17 +555,18 @@
           delegate_to: "{{ item }}"
           loop: "{{ groups['masters'] }}"
 
-        - name: 4.4.1:Modify apiserver certificate expiration to 10 years, execute update script
+        - name: 4.6.1:Modify apiserver certificate expiration to 10 years, execute update script
           shell: bash /root/k8s_install/update-kubeadm-cert.sh all --cri containerd && touch /root/k8s_install/update_kubeadm_cert.lock
           args:
             creates: /root/k8s_install/update_kubeadm_cert.lock
           delegate_to: "{{ item }}"
           loop: "{{ groups['masters'] }}"
 
-        - name: 4.5:Create installation lock file
+        - name: 4.7:Create installation lock file
           file: 
             path: /root/k8s_install/after_install.lock
             state: touch
+          delegate_to: "{{ groups['manage_node'][0] }}"
 
       when: not after_install_file_exists.stat.exists
 
