@@ -1,26 +1,8 @@
 # 时间服务器
-NTP: 192.168.152.200
-
-# 用于高可用的主机列表ip
-all_masters:
-  - 172.16.1.35
-  - 172.16.1.36
-  - 172.16.1.37
-
-# certSANs高可用dns白名单配置
-certSANs:
-  - 172.16.1.35
-  - 172.16.1.36
-  - 172.16.1.37
-  - 127.0.0.1
-  - master1
-  - master2
-  - master3
-  - ha-apiserveraddr
+NTP: 192.168.145.131
 
 # 控制面板主机名，不需要修改，固定为[manage_node]
-# 如果需要高可用，请将这里改成，kubeadm时会用到control_plane_endpoint: ha-apiserveraddr:16443
-control_plane_endpoint: master1
+control_plane_endpoint: k8s-master
 
 # kubeadm init使用，大版本号，不需要后缀
 kubernetes_version: v1.28.4
@@ -34,7 +16,7 @@ kube_3tools_version_yum: 1.28.4-150500.1.1
 # 定义pod的cidr网络，kubeadm init使用
 pod_network_cidr: 10.244.0.0/16 
 # kubeadm init使用
-apiserver_advertise_address: 192.168.152.200
+apiserver_advertise_address: 192.168.145.131
 
 # 修改calico使用custom-resources.yaml使用
 pod_network: 10.244.0.0/16
@@ -71,7 +53,7 @@ grafana_host: grafana.example.local
 
 # harbor域名,私有仓库域名
 harbor_domain: myharbor.com
-harbor_ip: 192.168.152.220
+harbor_ip: 192.168.145.200
 # 使用哪种方式访问harbor(此处默认使用password，如果使用secert，需要在每个资源文件中添加参数imagePullSecrets,详情参考仓库根目录readme)
 passord_or_secert: password
 # 如果修改了harbor的默认密码，需要修改/etc/containerd/config.toml: password = "yourpassword"
