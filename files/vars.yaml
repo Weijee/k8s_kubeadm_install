@@ -2,7 +2,7 @@
 NTP: 192.168.145.131
 
 # 控制面板主机名，不需要修改，固定为[manage_node]
-control_plane_endpoint: k8s-master
+control_plane_endpoint: 192.168.145.131
 
 # kubeadm init使用，大版本号，不需要后缀
 kubernetes_version: v1.28.4
