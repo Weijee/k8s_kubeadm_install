@@ -163,7 +163,7 @@
           state: touch
       - name: 4.2:Reboot all nodes
         reboot:
-          reboot_timeout: 15
+          reboot_timeout: 30
       when: not init_file_exists.stat.exists  
   
 
